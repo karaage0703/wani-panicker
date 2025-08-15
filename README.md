@@ -15,7 +15,9 @@
 
 ## セットアップ
 
-### 1. uvによる環境構築
+### 1. 標準環境（PC・開発環境）
+
+#### uvによる環境構築
 
 ```bash
 uv sync
@@ -31,7 +33,7 @@ uv sync
 - pynput (キーボード制御)
 - ruff (開発依存関係)
 
-### 2. 仮想環境の有効化
+#### 仮想環境の有効化
 
 ```bash
 source .venv/bin/activate
@@ -42,6 +44,38 @@ source .venv/bin/activate
 ```bash
 uv run <command>
 ```
+
+### 2. Jetson Orin環境（高速推論対応）
+
+Jetson Orin用の最適化されたセットアップを実行します：
+
+```bash
+# セットアップスクリプトの実行（初回のみ）
+chmod +x setup_jetson.sh
+./setup_jetson.sh
+```
+
+このスクリプトにより以下が自動で設定されます：
+- システムパッケージの更新
+- 必要な依存関係のインストール
+- ONNX Runtime GPU（JetPack 6.0対応）のインストール
+- TensorRT・CUDAプロバイダーの有効化
+- OpenCV GUIサポートの修正
+
+#### Jetson環境での実行
+
+```bash
+# CPU実行（デフォルト・安定）
+python3 wani_detector.py --camera 0
+
+# CUDA実行（高速・推奨）
+python3 wani_detector.py --camera 0 --provider cuda
+
+# TensorRT実行（最高速・初回時間かかる）
+python3 wani_detector.py --camera 0 --provider tensorrt
+```
+
+> **Note**: TensorRTは初回実行時にモデル最適化を行うため10-15分程度かかりますが、2回目以降は数秒で起動し、最高速度で推論できます。
 
 ## Wani Panicker
 
@@ -103,6 +137,10 @@ uv run wani_detector.py --camera 0 --calibrate
 - `--record`: カメラ映像を録画（カメラモードのみ）
 - `--fps`: カメラFPS制限（デフォルト: 30）
 - `--calibrate`: キャリブレーションモードを有効化
+- `--provider`: 実行プロバイダー（デフォルト: cpu）
+  - `cpu`: CPU実行（安定・デフォルト）
+  - `cuda`: CUDA実行（高速・Jetson推奨）
+  - `tensorrt`: TensorRT実行（最高速・Jetson専用）
 
 ### キャリブレーション操作
 
@@ -193,10 +231,12 @@ ruffの設定は`pyproject.toml`で管理されています：
 ├── wani_player.py         # ワニモーション手動再生ツール
 ├── motion_editor.py       # Motion Editorメインファイル
 ├── motion_utils.py        # Motion関連共通ユーティリティ
+├── setup_jetson.sh        # Jetson Orin用セットアップスクリプト
 ├── wani_calibration.json  # キャリブレーション設定（自動生成）
 ├── models/                # AIモデルファイル
 │   └── wani_detector.onnx   # ワニ検出用ONNXモデル（要配置）
 ├── motions/               # 保存されたモーションファイル
+├── trt_cache/            # TensorRTキャッシュ（自動生成）
 ├── pyproject.toml         # uv/ruff設定
 ├── .venv/                # 仮想環境 (uv syncで自動作成)
 └── README.md             # このファイル
