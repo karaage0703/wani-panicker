@@ -342,14 +342,82 @@ def run_frame_inference(session, frame, input_name, output_names, conf_threshold
 
 
 def run_camera_inference(
-    model_path, camera_id=0, conf_threshold=0.5, record_video=False, fps_limit=30, enable_calibration=False
+    model_path, camera_id=0, conf_threshold=0.5, record_video=False, fps_limit=30, enable_calibration=False, provider="auto"
 ):
     """USBカメラでリアルタイム推論実行"""
     print(f"\n📹 USBカメラ: {camera_id}")
 
     # ONNXセッション作成
     print("📦 ONNXモデルロード中...")
-    session = ort.InferenceSession(str(model_path))
+    
+    # プロバイダー選択
+    def get_providers(provider_choice):
+        available = ort.get_available_providers()
+        
+        if provider_choice == "tensorrt":
+            if 'TensorrtExecutionProvider' not in available:
+                print("⚠️  TensorRT未対応、CUDAにフォールバック")
+                return ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            return ['TensorrtExecutionProvider', 'CPUExecutionProvider']
+        elif provider_choice == "cuda":
+            if 'CUDAExecutionProvider' not in available:
+                print("⚠️  CUDA未対応、CPUにフォールバック")
+                return ['CPUExecutionProvider']
+            return ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        elif provider_choice == "cpu":
+            return ['CPUExecutionProvider']
+    
+    providers = get_providers(provider)
+    
+    # セッションオプション設定
+    sess_options = ort.SessionOptions()
+    sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    
+    # プロバイダー固有のオプション（プロバイダーと同じ数必要）
+    provider_options = []
+    
+    if 'TensorrtExecutionProvider' in providers:
+        print("  ⏳ TensorRT初回最適化中... (数分かかります)")
+        # 各プロバイダーに対応するオプションを設定
+        for provider in providers:
+            if provider == 'TensorrtExecutionProvider':
+                provider_options.append({
+                    'trt_max_workspace_size': '268435456',  # 256MB (最小化)
+                    'trt_engine_cache_enable': 'True',  # キャッシュ有効
+                    'trt_engine_cache_path': './trt_cache',  # キャッシュパス
+                })
+            else:
+                provider_options.append({})  # 他のプロバイダー用の空オプション
+    elif 'CUDAExecutionProvider' in providers:
+        print("  ⚡ CUDA起動最適化中...")
+        # 各プロバイダーに対応するオプションを設定
+        for provider in providers:
+            if provider == 'CUDAExecutionProvider':
+                provider_options.append({
+                    'device_id': 0,  # GPU ID
+                    'arena_extend_strategy': 'kNextPowerOfTwo',  # メモリ効率化
+                    'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB制限
+                    'cudnn_conv_algo_search': 'HEURISTIC',  # 高速アルゴリズム選択
+                    'do_copy_in_default_stream': True,  # デフォルトストリーム使用
+                })
+            else:
+                provider_options.append({})  # 他のプロバイダー用の空オプション
+    else:
+        # CPUのみの場合
+        for provider in providers:
+            provider_options.append({})
+    
+    session = ort.InferenceSession(str(model_path), sess_options, providers=providers, provider_options=provider_options)
+    
+    # 実際に使用されているプロバイダーを表示
+    active_provider = session.get_providers()[0]
+    print(f"  🚀 使用プロバイダー: {active_provider}")
+    if active_provider == 'TensorrtExecutionProvider':
+        print("  ⚡ TensorRT加速: 最高速度")
+    elif active_provider == 'CUDAExecutionProvider':
+        print("  🔥 CUDA加速: 高速")
+    else:
+        print("  🖥️  CPU実行: 標準")
 
     # 入力情報取得
     input_name = session.get_inputs()[0].name
@@ -621,6 +689,9 @@ def main():
     parser.add_argument("--record", action="store_true", help="カメラ映像を録画（カメラのみ）")
     parser.add_argument("--fps", type=int, default=30, help="カメラFPS制限")
     parser.add_argument("--calibrate", action="store_true", help="5匹ワニ位置キャリブレーションモード")
+    parser.add_argument("--provider", type=str, default="cpu", 
+                       choices=["tensorrt", "cuda", "cpu"], 
+                       help="実行プロバイダー: cpu(CPU・デフォルト), cuda(CUDA), tensorrt(TensorRT)")
 
     args = parser.parse_args()
 
@@ -644,6 +715,7 @@ def main():
             record_video=args.record,
             fps_limit=args.fps,
             enable_calibration=args.calibrate,
+            provider=args.provider,
         )
     # ファイルモードは現在サポートされていません
 
