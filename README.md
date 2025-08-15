@@ -95,6 +95,15 @@ uv run wani_detector.py --camera 0
 uv run wani_detector.py --camera 0 --calibrate
 ```
 
+### オプション
+
+- `--model`: ONNXモデルファイルのパス（デフォルト: models/wani_detector.onnx）
+- `--camera`: カメラID（必須、通常は0）
+- `--conf`: 検出信頼度閾値（デフォルト: 0.5）
+- `--record`: カメラ映像を録画（カメラモードのみ）
+- `--fps`: カメラFPS制限（デフォルト: 30）
+- `--calibrate`: キャリブレーションモードを有効化
+
 ### キャリブレーション操作
 
 #### ワニゾーン調整
