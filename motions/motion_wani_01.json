@@ -1,0 +1,59 @@
+{
+  "name": "motion_20250815_153625",
+  "points": [
+    {
+      "name": "Point_0",
+      "positions": {
+        "shoulder_pan.pos": -0.08045052292840182,
+        "shoulder_lift.pos": -18.089602704987314,
+        "elbow_flex.pos": 9.82867448151488,
+        "wrist_flex.pos": 100.0,
+        "wrist_roll.pos": 54.77411477411479,
+        "gripper.pos": 72.33449477351917
+      },
+      "duration": 1.0,
+      "timestamp": 1755243791.170977
+    },
+    {
+      "name": "Point_1",
+      "positions": {
+        "shoulder_pan.pos": -16.170555108608212,
+        "shoulder_lift.pos": -5.409974640743869,
+        "elbow_flex.pos": 11.091073038773686,
+        "wrist_flex.pos": 97.46281714785653,
+        "wrist_roll.pos": 52.67399267399267,
+        "gripper.pos": 70.94076655052265
+      },
+      "duration": 1.0,
+      "timestamp": 1755239522.685822
+    },
+    {
+      "name": "Point_2",
+      "positions": {
+        "shoulder_pan.pos": -16.251005631536614,
+        "shoulder_lift.pos": 5.663567202028744,
+        "elbow_flex.pos": 11.181244364292155,
+        "wrist_flex.pos": 100.0,
+        "wrist_roll.pos": 52.576312576312574,
+        "gripper.pos": 80.34843205574913
+      },
+      "duration": 1.0,
+      "timestamp": 1755239625.577641
+    },
+    {
+      "name": "Point_3",
+      "positions": {
+        "shoulder_pan.pos": -16.411906677393404,
+        "shoulder_lift.pos": 5.663567202028744,
+        "elbow_flex.pos": -4.6889089269612185,
+        "wrist_flex.pos": 100.0,
+        "wrist_roll.pos": 52.527472527472526,
+        "gripper.pos": 68.29268292682927
+      },
+      "duration": 1.0,
+      "timestamp": 1755239783.200518
+    }
+  ],
+  "created_at": "2025-08-15 15:36:25",
+  "robot_type": "so101_follower"
+}
