@@ -14,13 +14,11 @@ Wani Panicker - ワニを検出したら自動でアームで叩くシステム
 """
 
 import logging
-import os
-import sys
-import time
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 import cv2
 import draccus
@@ -37,8 +35,8 @@ from motion_utils import apply_pid_settings, get_home_position, load_motion_from
 from wani_detector import (
     WaniCalibration,
     draw_detections_with_zones,
-    preprocess_frame,
     postprocess_predictions,
+    preprocess_frame,
 )
 
 
@@ -404,7 +402,7 @@ class WaniPanicker:
             avg_inference_time = np.mean(inference_times)
             avg_detections_per_frame = total_detections / frame_count if frame_count > 0 else 0
 
-            print(f"\n✅ ワニパニッカー終了!")
+            print("\n✅ ワニパニッカー終了!")
             print(f"  処理フレーム数: {frame_count}")
             print(f"  総検出数: {total_detections}")
             print(f"  平均検出数/フレーム: {avg_detections_per_frame:.2f}")

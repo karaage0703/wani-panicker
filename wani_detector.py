@@ -4,12 +4,13 @@ ONNXモデルの動画・カメラ推論
 """
 
 import argparse
+import json
+import time
+from pathlib import Path
+
 import cv2
 import numpy as np
 import onnxruntime as ort
-from pathlib import Path
-import time
-import json
 
 
 class WaniCalibration:
@@ -31,7 +32,7 @@ class WaniCalibration:
         self.crop_height = 480  # クロップ高さ
         self.rotation_angle = 0  # 回転角度（度）
         self.crop_step = 10  # クロップ調整ステップ
-        self.rotation_step = 5  # 回転調整ステップ
+        self.rotation_step = 1  # 回転調整ステップ
 
         # 設定ファイルが存在すれば読み込み
         self.load_config()
@@ -587,7 +588,8 @@ def run_camera_inference(
                 avg_inference_time = np.mean(inference_times[-100:])
                 avg_detections_per_frame = total_detections / frame_count
                 print(
-                    f"  フレーム: {frame_count}, 平均推論: {avg_inference_time:.1f}ms, 平均検出: {avg_detections_per_frame:.2f}"
+                    f"  フレーム: {frame_count}, 平均推論: {avg_inference_time:.1f}ms, "
+                    f"平均検出: {avg_detections_per_frame:.2f}"
                 )
 
     finally:
@@ -601,7 +603,7 @@ def run_camera_inference(
         avg_inference_time = np.mean(inference_times)
         avg_detections_per_frame = total_detections / frame_count if frame_count > 0 else 0
 
-        print(f"\n✅ カメラ推論終了!")
+        print("\n✅ カメラ推論終了!")
         print(f"  処理フレーム数: {frame_count}")
         print(f"  総検出数: {total_detections}")
         print(f"  平均検出数/フレーム: {avg_detections_per_frame:.2f}")
