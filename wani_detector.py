@@ -24,6 +24,15 @@ class WaniCalibration:
         self.step_size = 5  # 調整ステップサイズ
         self.config_file = config_file
 
+        # カメラ変換パラメータ
+        self.crop_x = 0  # クロップ開始X座標
+        self.crop_y = 0  # クロップ開始Y座標
+        self.crop_width = 640  # クロップ幅
+        self.crop_height = 480  # クロップ高さ
+        self.rotation_angle = 0  # 回転角度（度）
+        self.crop_step = 10  # クロップ調整ステップ
+        self.rotation_step = 5  # 回転調整ステップ
+
         # 設定ファイルが存在すれば読み込み
         self.load_config()
 
@@ -75,7 +84,13 @@ class WaniCalibration:
 
     def get_status_text(self):
         """現在のパラメータを文字列で取得"""
-        return [f"Center: ({self.center_x}, {self.center_y})", f"Spacing: {self.spacing}", f"Size: {self.width}x{self.height}"]
+        return [
+            f"Center: ({self.center_x}, {self.center_y})",
+            f"Spacing: {self.spacing}",
+            f"Size: {self.width}x{self.height}",
+            f"Crop: ({self.crop_x},{self.crop_y}) {self.crop_width}x{self.crop_height}",
+            f"Rotation: {self.rotation_angle}°",
+        ]
 
     def save_config(self):
         """設定をファイルに保存"""
@@ -85,6 +100,11 @@ class WaniCalibration:
             "spacing": self.spacing,
             "width": self.width,
             "height": self.height,
+            "crop_x": self.crop_x,
+            "crop_y": self.crop_y,
+            "crop_width": self.crop_width,
+            "crop_height": self.crop_height,
+            "rotation_angle": self.rotation_angle,
         }
         try:
             with open(self.config_file, "w") as f:
@@ -104,6 +124,11 @@ class WaniCalibration:
                 self.spacing = config.get("spacing", self.spacing)
                 self.width = config.get("width", self.width)
                 self.height = config.get("height", self.height)
+                self.crop_x = config.get("crop_x", self.crop_x)
+                self.crop_y = config.get("crop_y", self.crop_y)
+                self.crop_width = config.get("crop_width", self.crop_width)
+                self.crop_height = config.get("crop_height", self.crop_height)
+                self.rotation_angle = config.get("rotation_angle", self.rotation_angle)
                 print(f"  設定読み込み: {self.config_file}")
         except Exception as e:
             print(f"  設定読み込みエラー: {e}")
@@ -120,9 +145,46 @@ class WaniCalibration:
             self.width = max(20, self.width + direction * self.step_size)
         elif param_name == "height":
             self.height = max(20, self.height + direction * self.step_size)
+        elif param_name == "crop_x":
+            self.crop_x = max(0, self.crop_x + direction * self.crop_step)
+        elif param_name == "crop_y":
+            self.crop_y = max(0, self.crop_y + direction * self.crop_step)
+        elif param_name == "crop_width":
+            self.crop_width = max(100, self.crop_width + direction * self.crop_step)
+        elif param_name == "crop_height":
+            self.crop_height = max(100, self.crop_height + direction * self.crop_step)
+        elif param_name == "rotation":
+            self.rotation_angle = (self.rotation_angle + direction * self.rotation_step) % 360
 
         # 調整後に自動保存
         self.save_config()
+
+    def apply_camera_transform(self, frame):
+        """カメラフレームにクロップと回転を適用"""
+        if frame is None:
+            return frame
+
+        # 回転を適用
+        if self.rotation_angle != 0:
+            height, width = frame.shape[:2]
+            center = (width // 2, height // 2)
+            rotation_matrix = cv2.getRotationMatrix2D(center, self.rotation_angle, 1.0)
+            frame = cv2.warpAffine(frame, rotation_matrix, (width, height))
+
+        # クロップを適用
+        height, width = frame.shape[:2]
+        x1 = max(0, min(self.crop_x, width - 100))
+        y1 = max(0, min(self.crop_y, height - 100))
+        x2 = min(width, x1 + self.crop_width)
+        y2 = min(height, y1 + self.crop_height)
+
+        cropped = frame[y1:y2, x1:x2]
+
+        # クロップ後のサイズが元の解像度と異なる場合、リサイズ
+        if cropped.shape[0] != height or cropped.shape[1] != width:
+            cropped = cv2.resize(cropped, (width, height))
+
+        return cropped
 
 
 def preprocess_frame(frame, img_size=640):
@@ -331,12 +393,24 @@ def run_camera_inference(
     # キャリブレーション設定（常に作成して設定を読み込み）
     calibration = WaniCalibration(center_x=width // 2, center_y=height // 2)
 
-    if enable_calibration:
-        print("🎯 キャリブレーションモード有効")
-        print("  キー操作:")
-        print("    'q': 終了, 's': スクリーンショット")
+    def print_calibration_help():
+        """キャリブレーション操作方法を表示"""
+        print("\n" + "=" * 50)
+        print("🎯 キャリブレーションモード操作方法")
+        print("=" * 50)
+        print("  基本操作:")
+        print("    'q': 終了, 's': スクリーンショット, '?': このヘルプを再表示")
+        print("  === ワニゾーン調整 ===")
         print("    'w/a/s/d': 中心位置調整")
         print("    'i/k': 間隔調整, 'j/l': 横幅調整, 'u/o': 縦幅調整")
+        print("  === カメラ調整 ===")
+        print("    'y/h': クロップ位置上下, 'g/f': クロップ位置左右")
+        print("    '1/2': クロップ幅調整, '3/4': クロップ高さ調整")
+        print("    'r/t': 回転調整")
+        print("=" * 50)
+
+    if enable_calibration:
+        print_calibration_help()
     else:
         print("⚡ リアルタイム推論開始...")
         print("  'q'キーで終了, 's'キーでスクリーンショット保存")
@@ -357,6 +431,9 @@ def run_camera_inference(
             if not ret:
                 print("⚠️ フレームの取得に失敗")
                 continue
+
+            # カメラ変換を適用（クロップ・回転）
+            frame = calibration.apply_camera_transform(frame)
 
             frame_count += 1
             if not enable_calibration:
@@ -464,6 +541,40 @@ def run_camera_inference(
                 elif key == ord("o"):  # 縦幅拡大
                     calibration.adjust_parameter("height", 1)
                     print(f"  縦幅拡大: {calibration.height}")
+                # カメラ調整キー（通常キー）
+                elif key == ord("r"):  # 反時計回り回転
+                    calibration.adjust_parameter("rotation", -1)
+                    print(f"  反時計回り回転: {calibration.rotation_angle}°")
+                elif key == ord("t"):  # 時計回り回転
+                    calibration.adjust_parameter("rotation", 1)
+                    print(f"  時計回り回転: {calibration.rotation_angle}°")
+                elif key == ord("y"):  # クロップY位置上
+                    calibration.adjust_parameter("crop_y", -1)
+                    print(f"  クロップ位置上: Y={calibration.crop_y}")
+                elif key == ord("h"):  # クロップY位置下
+                    calibration.adjust_parameter("crop_y", 1)
+                    print(f"  クロップ位置下: Y={calibration.crop_y}")
+                elif key == ord("g"):  # クロップX位置左
+                    calibration.adjust_parameter("crop_x", -1)
+                    print(f"  クロップ位置左: X={calibration.crop_x}")
+                elif key == ord("f"):  # クロップX位置右
+                    calibration.adjust_parameter("crop_x", 1)
+                    print(f"  クロップ位置右: X={calibration.crop_x}")
+                elif key == ord("1"):  # クロップ幅縮小
+                    calibration.adjust_parameter("crop_width", -1)
+                    print(f"  クロップ幅縮小: {calibration.crop_width}")
+                elif key == ord("2"):  # クロップ幅拡大
+                    calibration.adjust_parameter("crop_width", 1)
+                    print(f"  クロップ幅拡大: {calibration.crop_width}")
+                elif key == ord("3"):  # クロップ高さ縮小
+                    calibration.adjust_parameter("crop_height", -1)
+                    print(f"  クロップ高さ縮小: {calibration.crop_height}")
+                elif key == ord("4"):  # クロップ高さ拡大
+                    calibration.adjust_parameter("crop_height", 1)
+                    print(f"  クロップ高さ拡大: {calibration.crop_height}")
+                # ヘルプ表示
+                elif key == ord("?"):  # ヘルプ表示
+                    print_calibration_help()
                 # デバッグ用：どのキーが押されたかを表示
                 elif key != 255:  # 255は何もキーが押されていない状態
                     if 32 <= key <= 126:  # 印刷可能文字の場合
@@ -532,11 +643,7 @@ def main():
             fps_limit=args.fps,
             enable_calibration=args.calibrate,
         )
-    elif args.input:
-        # ファイルモード
-        if not Path(args.input).exists():
-            print(f"❌ 入力ファイルが見つかりません: {args.input}")
-            return
+    # ファイルモードは現在サポートされていません
 
     else:
         print("❌ --camera を指定してください")
