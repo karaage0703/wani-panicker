@@ -15,6 +15,62 @@
 
 ## セットアップ
 
+### 0. USBシリアルデバイス設定（必須）
+
+ロボットの接続を安定化するため、udev rulesによるUSBシリアルデバイスの設定を行います。
+
+#### デバイス情報の確認
+
+```bash
+# USBデバイス一覧表示
+lsusb
+
+# 特定デバイスのシリアル番号確認（例：1a86:55d3）
+lsusb -v -s [bus:device] | grep -i serial
+```
+
+#### udev rulesファイルの作成
+
+```bash
+# udev rulesファイルを作成
+sudo cp config/99-lerobot-serial.rules /etc/udev/rules.d/
+
+# または手動で作成
+sudo nano /etc/udev/rules.d/99-lerobot-serial.rules
+```
+
+**99-lerobot-serial.rules の内容例：**
+```
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", ATTRS{serial}=="5AA9018069", SYMLINK+="usbserial_lerobot_follower", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", ATTRS{serial}=="5AA9017941", SYMLINK+="usbserial_lerobot_leader", MODE="0666"
+```
+
+#### udev rulesの適用
+
+```bash
+# udev rulesをリロード
+sudo udevadm control --reload
+
+# デバイスを再接続または以下でトリガー
+sudo udevadm trigger
+```
+
+#### 設定確認
+
+```bash
+# シンボリックリンクが作成されているか確認
+ls -la /dev/usbserial_*
+
+# 期待される出力例：
+# lrwxrwxrwx 1 root root 7 Aug 16 15:30 /dev/usbserial_lerobot_follower -> ttyUSB0
+```
+
+この設定により、USB接続順序に関係なく`/dev/usbserial_lerobot_follower`で一貫してロボットにアクセスできます。
+
+> **参考**: [USB シリアル通信デバイスを udev で管理する | Zenn](https://zenn.dev/karaage0703/articles/8042463b476fbf)
+
+## セットアップ
+
 ### 1. 標準環境（PC・開発環境）
 
 #### uvによる環境構築
@@ -47,20 +103,51 @@ uv run <command>
 
 ### 2. Jetson Orin環境（高速推論対応）
 
-Jetson Orin用の最適化されたセットアップを実行します：
+Jetson Orin用の最適化されたセットアップスクリプトを実行します。
+
+> **重要**: Jetson Orin環境では、NVIDIA提供のonnxruntime-gpu wheelファイルがPyPIにないため、**uvは使用せずシステムのPython環境**を直接使用します。uvでは外部wheelファイルの直接インストールに制限があるためです。
+
+#### 統合セットアップスクリプトの実行
 
 ```bash
-# セットアップスクリプトの実行（初回のみ）
-chmod +x setup_jetson.sh
-./setup_jetson.sh
+# 実行権限を付与
+chmod +x setup_jetson_lerobot.sh
+chmod +x setup_jetson_onnxruntime-gpu.sh
+
+# Step 1: LeRobotとPython依存関係のセットアップ
+./setup_jetson_lerobot.sh
+
+# Step 2: ONNX Runtime GPU版のセットアップ
+./setup_jetson_onnxruntime-gpu.sh
 ```
 
-このスクリプトにより以下が自動で設定されます：
-- システムパッケージの更新
-- 必要な依存関係のインストール
-- ONNX Runtime GPU（JetPack 6.0対応）のインストール
-- TensorRT・CUDAプロバイダーの有効化
-- OpenCV GUIサポートの修正
+#### setup_jetson_lerobot.sh の内容
+このスクリプトにより以下が自動で実行されます：
+- システム情報確認
+- Python依存関係の競合解決
+- LeRobot[feetech]のインストール
+- NumPy 2.0互換性問題の回避
+
+#### setup_jetson_onnxruntime-gpu.sh の内容  
+このスクリプトにより以下が自動で実行されます：
+- JetPack 6.0対応ONNX Runtime GPU版の自動ダウンロード
+- 既存ONNX Runtimeの削除とGPU版インストール
+- TensorRT・CUDAプロバイダーの動作確認
+- 自動クリーンアップ
+
+#### 手動での依存関係解決（必要な場合）
+
+```bash
+# システムのpandas/numpyとの競合解決
+sudo apt remove python3-pandas python3-numpy
+
+# NumPy 2.0互換性問題の回避
+pip3 install "numpy<2.0" --force-reinstall
+
+# OpenCVのGUI対応版を優先
+pip3 uninstall -y opencv-python-headless
+pip3 install opencv-python
+```
 
 #### Jetson環境での実行
 
@@ -75,7 +162,9 @@ python3 wani_detector.py --camera 0 --provider cuda
 python3 wani_detector.py --camera 0 --provider tensorrt
 ```
 
-> **Note**: TensorRTは初回実行時にモデル最適化を行うため10-15分程度かかりますが、2回目以降は数秒で起動し、最高速度で推論できます。
+> **Note**: 
+> - Jetson環境では`python3`コマンドを直接使用（uv runは使用しない）
+> - TensorRTはまだ動作未確認です
 
 ## Wani Panicker
 
@@ -84,7 +173,15 @@ python3 wani_detector.py --camera 0 --provider tensorrt
 ### 使用方法
 
 ```bash
-uv run wani_panicker.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/ttyUSB0
+# 標準環境（PC・開発環境）
+uv run wani_panicker.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
+# または
+source .venv/bin/activate && python3 wani_panicker.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
+
+# Jetson Orin環境（システムPython使用）
+python3 wani_panicker.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
+
+# udev rules未設定の場合は /dev/ttyUSB0 を使用
 ```
 
 ### 動作説明
@@ -120,13 +217,25 @@ ONNXモデルを使用したワニ検出システムです。キャリブレー�
 #### 基本的な検出
 
 ```bash
+# 標準環境（PC・開発環境）
 uv run wani_detector.py --camera 0
+# または
+source .venv/bin/activate && python3 wani_detector.py --camera 0
+
+# Jetson Orin環境（システムPython使用）
+python3 wani_detector.py --camera 0
 ```
 
 #### キャリブレーションモード
 
 ```bash
+# 標準環境（PC・開発環境）
 uv run wani_detector.py --camera 0 --calibrate
+# または
+source .venv/bin/activate && python3 wani_detector.py --camera 0 --calibrate
+
+# Jetson Orin環境（システムPython使用）
+python3 wani_detector.py --camera 0 --calibrate
 ```
 
 ### オプション
@@ -169,7 +278,15 @@ uv run wani_detector.py --camera 0 --calibrate
 ### 使用方法
 
 ```bash
-uv run wani_player.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/ttyUSB0
+# 標準環境（PC・開発環境）
+uv run wani_player.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
+# または
+source .venv/bin/activate && python3 wani_player.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
+
+# Jetson Orin環境（システムPython使用）
+python3 wani_player.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
+
+# udev rules未設定の場合は /dev/ttyUSB0 を使用
 ```
 
 ### キーボード操作
@@ -185,7 +302,15 @@ uv run wani_player.py --robot.type=so101_follower --robot.id=lerobot_follower --
 ### 使用方法
 
 ```bash
-uv run python motion_editor.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/ttyUSB0
+# 標準環境（PC・開発環境）
+uv run motion_editor.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
+# または
+source .venv/bin/activate && python3 motion_editor.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
+
+# Jetson Orin環境（システムPython使用）
+python3 motion_editor.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
+
+# udev rules未設定の場合は /dev/ttyUSB0 を使用
 ```
 
 ### キーボードコマンド
@@ -226,20 +351,25 @@ ruffの設定は`pyproject.toml`で管理されています：
 
 ```
 .
-├── wani_panicker.py       # メインシステム：ワニ検出・自動叩きシステム
-├── wani_detector.py       # ワニ検出システム（キャリブレーション機能付き）
-├── wani_player.py         # ワニモーション手動再生ツール
-├── motion_editor.py       # Motion Editorメインファイル
-├── motion_utils.py        # Motion関連共通ユーティリティ
-├── setup_jetson.sh        # Jetson Orin用セットアップスクリプト
-├── wani_calibration.json  # キャリブレーション設定（自動生成）
-├── models/                # AIモデルファイル
-│   └── wani_detector.onnx   # ワニ検出用ONNXモデル（要配置）
-├── motions/               # 保存されたモーションファイル
-├── trt_cache/            # TensorRTキャッシュ（自動生成）
-├── pyproject.toml         # uv/ruff設定
-├── .venv/                # 仮想環境 (uv syncで自動作成)
-└── README.md             # このファイル
+├── wani_panicker.py              # メインシステム：ワニ検出・自動叩きシステム
+├── wani_detector.py              # ワニ検出システム（キャリブレーション機能付き）
+├── wani_player.py                # ワニモーション手動再生ツール
+├── motion_editor.py              # Motion Editorメインファイル
+├── motion_utils.py               # Motion関連共通ユーティリティ
+├── setup_jetson_lerobot.sh       # Jetson Orin用LeRobotセットアップスクリプト
+├── setup_jetson_onnxruntime-gpu.sh # Jetson Orin用ONNX Runtime GPUセットアップスクリプト
+├── rules.md                      # プロジェクトルール・ガイドライン
+├── pyproject.toml                # uv/ruff設定
+├── uv.lock                       # uvの依存関係ロックファイル
+├── wani_calibration.json         # キャリブレーション設定（自動生成）
+├── .venv/                        # 仮想環境 (uv syncで自動作成)
+├── .github/                      # GitHub設定
+├── config/                       # 設定ファイル
+│   └── 99-lerobot-serial.rules     # udev rules（USBシリアルデバイス設定）
+├── models/                       # AIモデルファイル
+│   └── wani_detector.onnx          # ワニ検出用ONNXモデル（要配置）
+├── motions/                      # 保存されたモーションファイル
+└── README.md                     # このファイル
 ```
 
 ## システム全体フロー
