@@ -52,7 +52,7 @@ class WaniPanickerConfig:
     # モーションファイルディレクトリ
     motion_dir: str = "./motions"
     # 再生速度の倍率 (1.0が通常速度)
-    speed: float = 1.8
+    speed: float = 1.2
     # デバッグ情報を表示するか
     verbose: bool = False
     # 開始時にホームポジションに移動するか
