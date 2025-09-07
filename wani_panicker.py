@@ -85,25 +85,22 @@ class WaniDetector:
             raise FileNotFoundError(f"ONNXモデルが見つかりません: {model_path}")
 
         print(f"📦 ONNXモデル読み込み中... ({model_path})")
-        
+
         # プロバイダー選択（wani_detector.pyと同じロジック）
         providers = self._get_providers(provider)
-        
+
         # セッションオプション設定
         sess_options = ort.SessionOptions()
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        
+
         # プロバイダー固有のオプション設定
         provider_options = self._get_provider_options(providers)
-        
+
         # ONNXセッション作成
         self.session = ort.InferenceSession(
-            str(self.model_path), 
-            sess_options, 
-            providers=providers, 
-            provider_options=provider_options
+            str(self.model_path), sess_options, providers=providers, provider_options=provider_options
         )
-        
+
         # 実際に使用されているプロバイダーを表示
         active_provider = self.session.get_providers()[0]
         print(f"  🚀 使用プロバイダー: {active_provider}")
@@ -113,18 +110,18 @@ class WaniDetector:
             print("  🔥 CUDA加速: 高速")
         else:
             print("  🖥️  CPU実行: 標準")
-        
+
         self.input_name = self.session.get_inputs()[0].name
         self.output_names = [output.name for output in self.session.get_outputs()]
-        
+
         input_shape = self.session.get_inputs()[0].shape
         print(f"  入力: {self.input_name}, Shape: {input_shape}")
         print(f"  出力: {self.output_names}")
-        
+
     def _get_providers(self, provider_choice):
         """プロバイダー選択ロジック"""
         available = ort.get_available_providers()
-        
+
         if provider_choice == "tensorrt":
             if "TensorrtExecutionProvider" not in available:
                 print("⚠️  TensorRT未対応、CUDAにフォールバック")
@@ -142,29 +139,33 @@ class WaniDetector:
         else:
             print(f"⚠️  未知のプロバイダー: {provider_choice}, CPUにフォールバック")
             return ["CPUExecutionProvider"]
-    
+
     def _get_provider_options(self, providers):
         """プロバイダー固有のオプション設定"""
         provider_options = []
-        
+
         for provider in providers:
             if provider == "TensorrtExecutionProvider":
-                provider_options.append({
-                    "trt_max_workspace_size": "268435456",  # 256MB
-                    "trt_engine_cache_enable": "True",
-                    "trt_engine_cache_path": "./trt_cache",
-                })
+                provider_options.append(
+                    {
+                        "trt_max_workspace_size": "268435456",  # 256MB
+                        "trt_engine_cache_enable": "True",
+                        "trt_engine_cache_path": "./trt_cache",
+                    }
+                )
             elif provider == "CUDAExecutionProvider":
-                provider_options.append({
-                    "device_id": 0,
-                    "arena_extend_strategy": "kNextPowerOfTwo",
-                    "gpu_mem_limit": 2 * 1024 * 1024 * 1024,  # 2GB制限
-                    "cudnn_conv_algo_search": "HEURISTIC",
-                    "do_copy_in_default_stream": True,
-                })
+                provider_options.append(
+                    {
+                        "device_id": 0,
+                        "arena_extend_strategy": "kNextPowerOfTwo",
+                        "gpu_mem_limit": 2 * 1024 * 1024 * 1024,  # 2GB制限
+                        "cudnn_conv_algo_search": "HEURISTIC",
+                        "do_copy_in_default_stream": True,
+                    }
+                )
             else:
                 provider_options.append({})  # 空のオプション
-                
+
         return provider_options
 
     def detect(self, frame):
@@ -353,11 +354,11 @@ class WaniPanicker:
 
             self.is_playing_motion = True
             print(f"🎯 {zone_id}のワニを叩きます！")
-            
+
             try:
                 # 1. 中間ポーズに移動
                 self._move_to_intermediate_pose()
-                
+
                 # 2. ワニ叩きモーションを実行
                 print(f"▶️  モーション再生開始: {motion.name}")
                 for i, point in enumerate(motion.points, 1):
