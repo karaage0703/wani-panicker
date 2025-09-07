@@ -37,7 +37,7 @@
         "wrist_roll.pos": 0.05224660397074388,
         "gripper.pos": 91.15832762165867
       },
-      "duration": 1.0,
+      "duration": 0.5,
       "timestamp": 1757209224.7277424
     },
     {
@@ -50,7 +50,7 @@
         "wrist_roll.pos": 0.0,
         "gripper.pos": 91.15832762165867
       },
-      "duration": 1.0,
+      "duration": 0.5,
       "timestamp": 1757209239.0463831
     }
   ],

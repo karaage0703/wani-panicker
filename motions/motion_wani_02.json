@@ -31,13 +31,13 @@
       "name": "Point_3",
       "positions": {
         "shoulder_pan.pos": -12.634186622625933,
-        "shoulder_lift.pos": 3.575936053849375,
+        "shoulder_lift.pos": 5.2575936053849375,
         "elbow_flex.pos": 24.819494584837543,
         "wrist_flex.pos": 91.7855598789451,
         "wrist_roll.pos": -0.2089864158829755,
         "gripper.pos": 96.57299520219328
       },
-      "duration": 1.0,
+      "duration": 0.5,
       "timestamp": 1757209318.0251954
     },
     {
@@ -50,7 +50,7 @@
         "wrist_roll.pos": 0.10449320794148775,
         "gripper.pos": 96.57299520219328
       },
-      "duration": 1.0,
+      "duration": 0.5,
       "timestamp": 1757209327.1261635
     }
   ],
