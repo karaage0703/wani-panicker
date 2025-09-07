@@ -342,7 +342,14 @@ def run_frame_inference(session, frame, input_name, output_names, conf_threshold
 
 
 def run_camera_inference(
-    model_path, camera_id=0, conf_threshold=0.5, record_video=False, fps_limit=30, enable_calibration=False, provider="auto"
+    model_path,
+    camera_id=0,
+    conf_threshold=0.5,
+    record_video=False,
+    fps_limit=30,
+    enable_calibration=False,
+    provider="auto",
+    display_scale=2.0,
 ):
     """USBカメラでリアルタイム推論実行"""
     print(f"\n📹 USBカメラ: {camera_id}")
@@ -472,7 +479,7 @@ def run_camera_inference(
         print("🎯 キャリブレーションモード操作方法")
         print("=" * 50)
         print("  基本操作:")
-        print("    'q': 終了, 's': スクリーンショット, '?': このヘルプを再表示")
+        print("    'q'またはESC: 終了, 's': スクリーンショット, '?': このヘルプを再表示")
         print("  === ワニゾーン調整 ===")
         print("    'w/a/s/d': 中心位置調整")
         print("    'i/k': 間隔調整, 'j/l': 横幅調整, 'u/o': 縦幅調整")
@@ -486,7 +493,7 @@ def run_camera_inference(
         print_calibration_help()
     else:
         print("⚡ リアルタイム推論開始...")
-        print("  'q'キーで終了, 's'キーでスクリーンショット保存")
+        print("  'q'キーまたはESCキーで終了, 's'キーでスクリーンショット保存")
         print("  キャリブレーション枠を表示します")
 
     try:
@@ -560,7 +567,11 @@ def run_camera_inference(
                         frame_with_detections, text, (10, y_offset + i * 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
                     )
 
-            # 画面表示
+            # 画面表示（設定可能なサイズ倍率で表示）
+            window_width = int(width * display_scale)
+            window_height = int(height * display_scale)
+            cv2.namedWindow("Wani Camera Detection", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("Wani Camera Detection", window_width, window_height)
             cv2.imshow("Wani Camera Detection", frame_with_detections)
 
             # ウィンドウにフォーカスを設定（キー入力を確実に受け取るため）
@@ -573,7 +584,7 @@ def run_camera_inference(
 
             # キー入力処理（応答性とフレームレートのバランス）
             key = cv2.waitKey(30) & 0xFF
-            if key == ord("q"):
+            if key == ord("q") or key == 27:  # 'q'キーまたはESCキー (27)
                 print("\n⏹️ ユーザーが終了")
                 break
             elif key == ord("s") and not enable_calibration:
@@ -700,6 +711,12 @@ def main():
         choices=["tensorrt", "cuda", "cpu"],
         help="実行プロバイダー: cpu(CPU・デフォルト), cuda(CUDA), tensorrt(TensorRT)",
     )
+    parser.add_argument(
+        "--display-scale",
+        type=float,
+        default=2.0,
+        help="表示ウィンドウのサイズ倍率（デフォルト: 2.0）",
+    )
 
     args = parser.parse_args()
 
@@ -724,6 +741,7 @@ def main():
             fps_limit=args.fps,
             enable_calibration=args.calibrate,
             provider=args.provider,
+            display_scale=args.display_scale,
         )
     # ファイルモードは現在サポートされていません
 

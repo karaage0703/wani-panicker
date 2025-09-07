@@ -52,7 +52,7 @@ class WaniPanickerConfig:
     # モーションファイルディレクトリ
     motion_dir: str = "./motions"
     # 再生速度の倍率 (1.0が通常速度)
-    speed: float = 1.5
+    speed: float = 1.8
     # デバッグ情報を表示するか
     verbose: bool = False
     # 開始時にホームポジションに移動するか
@@ -71,6 +71,8 @@ class WaniPanickerConfig:
     fps_limit: int = 30
     # ONNX実行プロバイダー（CPU/CUDA/TensorRT対応）
     provider: str = "cpu"
+    # 表示ウィンドウのサイズ倍率（1.0がカメラ解像度と同じ）
+    display_scale: float = 1.5
 
 
 class WaniDetector:
@@ -501,7 +503,11 @@ class WaniPanicker:
                             frame_with_detections, text, (10, y_offset + i * 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
                         )
 
-                # 画面表示
+                # 画面表示（設定可能なサイズ倍率で表示）
+                window_width = int(width * self.cfg.display_scale)
+                window_height = int(height * self.cfg.display_scale)
+                cv2.namedWindow("Wani Panicker", cv2.WINDOW_NORMAL)
+                cv2.resizeWindow("Wani Panicker", window_width, window_height)
                 cv2.imshow("Wani Panicker", frame_with_detections)
 
                 # キー入力処理
