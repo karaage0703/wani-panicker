@@ -13,6 +13,7 @@ Wani Player - キーボード0-5でワニモーション00-05を再生するツ�
     3: motion_wani_03.json を再生
     4: motion_wani_04.json を再生
     5: motion_wani_05.json を再生
+    i: motion_wani_00_02.json を再生（中間ポーズ）
     h: ホームポジションに移動
     ESC: 終了
 """
@@ -130,6 +131,19 @@ class WaniPlayer:
         """全てのワニモーションファイルを事前に読み込み"""
         print("📚 ワニモーションファイルを読み込み中...")
 
+        # 中間ポーズファイルを読み込み
+        intermediate_file = "motion_wani_00_02.json"
+        intermediate_path = Path(self.cfg.motion_dir) / intermediate_file
+        if intermediate_path.exists():
+            try:
+                intermediate_motion = load_motion_from_file(str(intermediate_path))
+                self.motions["i"] = intermediate_motion  # 'i'キーで中間ポーズ
+                print(f"✅ {intermediate_file}: {intermediate_motion.name} (中間ポーズ)")
+            except Exception as e:
+                print(f"❌ {intermediate_file} 読み込みエラー: {e}")
+        else:
+            print(f"⚠️  {intermediate_file} が見つかりません（中間ポーズ用）")
+
         for i in range(6):  # 0-5
             motion_file = f"motion_wani_{i:02d}.json"
             motion_path = Path(self.cfg.motion_dir) / motion_file
@@ -167,6 +181,13 @@ class WaniPlayer:
                 elif key.char.lower() == "h":
                     print("\n🏠 ホームポジションに移動します")
                     self._go_to_home()
+
+                elif key.char.lower() == "i":
+                    if "i" in self.motions:
+                        print("\n🔄 中間ポーズに移動します")
+                        self._play_motion(self.motions["i"])
+                    else:
+                        print("\n❌ 中間ポーズファイルが読み込まれていません")
 
         except AttributeError:
             pass
@@ -225,6 +246,7 @@ class WaniPlayer:
         print("\n🎮 ワニプレイヤー起動完了!")
         print("=== キーボード操作 ===")
         print("0-5: ワニモーション00-05を再生")
+        print("i: 中間ポーズに移動 (motion_wani_00_02.json)")
         print("h: ホームポジションに移動")
         print("ESC: 終了")
         print("========================")

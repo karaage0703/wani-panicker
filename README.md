@@ -6,16 +6,34 @@
 
 ## 機能
 
-- **Wani Panicker**: カメラでワニを検出し、自動でロボットアームが叩くシステム
+- **Wani Panicker**: カメラでワニを検出し、自動でロボットアームが叩くシステム（CUDA/TensorRT対応、中間ポーズ経由機能付き）
 - **Motion Editor**: キーボード操作によるポイントtoポイントモーション作成・編集ツール
 - **Wani Player**: キーボードでワニモーション00-05を手動再生するツール
-- **Wani Detector**: ONNXモデルによるワニ検出システム（キャリブレーション機能付き）
+- **Wani Detector**: ONNXモデルによるワニ検出システム（キャリブレーション機能付き、CUDA/TensorRT対応）
 - uvを使用した仮想環境管理
 - ruffによるコード品質管理
 
 ## セットアップ
 
-### 0. USBシリアルデバイス設定（必須）
+### 0. ワニワニパニック筐体のファームウェア設定（必須）
+
+このシステムを使用する前に、ワニワニパニック筐体にカスタムファームウェアを書き込む必要があります。
+
+#### ファームウェアの取得・書き込み
+
+```bash
+# ファームウェアリポジトリをクローン
+git clone https://github.com/matsujirushi/waniwanipanic
+cd waniwanipanic
+
+# 書き込み手順はリポジトリのREADME.mdを参照してください
+```
+
+> **重要**: ワニワニパニック筐体の速度を変えるために、カスタムファームウェアを使用します。
+
+> **参考**: [ワニワニパニック ファームウェア](https://github.com/matsujirushi/waniwanipanic)
+
+### 1. USBシリアルデバイス設定（必須）
 
 ロボットの接続を安定化するため、udev rulesによるUSBシリアルデバイスの設定を行います。
 
@@ -173,13 +191,11 @@ python3 wani_detector.py --camera 0 --provider tensorrt
 ### 使用方法
 
 ```bash
-# 標準環境（PC・開発環境）
-uv run wani_panicker.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
-# または
-source .venv/bin/activate && python3 wani_panicker.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
-
-# Jetson Orin環境（システムPython使用）
+# 基本実行（CPU）
 python3 wani_panicker.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower
+
+# CUDA高速実行（Jetson推奨）
+python3 wani_panicker.py --robot.type=so101_follower --robot.id=lerobot_follower --robot.port=/dev/usbserial_lerobot_follower --provider=cuda
 
 # udev rules未設定の場合は /dev/ttyUSB0 を使用
 ```
@@ -187,24 +203,37 @@ python3 wani_panicker.py --robot.type=so101_follower --robot.id=lerobot_follower
 ### 動作説明
 
 1. カメラでフレームを取得
-2. ONNXモデルでワニ検出
+2. ONNXモデルでワニ検出（CPU/CUDA/TensorRT対応）
 3. 検出されたワニをキャリブレーション済みの5つのゾーン（wani_01〜wani_05）に割り当て
-4. 対応するモーションファイル（motion_wani_01.json〜motion_wani_05.json）を自動実行
+4. **中間ポーズ（motion_wani_00_02.json）を経由**してから対応するモーションファイル（motion_wani_01.json〜motion_wani_05.json）を自動実行
 5. ロボットアームがワニを叩く
+6. ホームポジション（motion_wani_00.json）に復帰
 
 ### オプション
 
 - `--model-path`: ONNXモデルファイルのパス（デフォルト: models/wani_detector.onnx）
 - `--camera-id`: カメラID（デフォルト: 0）
 - `--conf-threshold`: 検出信頼度閾値（デフォルト: 0.5）
-- `--speed`: モーション再生速度倍率（デフォルト: 0.8）
+- `--speed`: モーション再生速度倍率（デフォルト: 1.5）
 - `--detection-cooldown`: 同じワニへの連続検出を防ぐ時間（秒、デフォルト: 3.0）
-- `--fps-limit`: カメラFPS制限（デフォルト: 10）
+- `--fps-limit`: カメラFPS制限（デフォルト: 30）
+- `--provider`: ONNX実行プロバイダー（デフォルト: cpu）
+  - `cpu`: CPU実行（安定・デフォルト）
+  - `cuda`: CUDA実行（高速・Jetson推奨）
+  - `tensorrt`: TensorRT実行（最高速・Jetson専用）
+- `--end-hold-time`: モーション終了後の待機時間（秒、デフォルト: 0.2）
+- `--home-duration`: ホーム移動時間（秒、デフォルト: 0.2）
 - `--verbose`: デバッグ情報表示
+
+### 終了方法
+
+- `'q'`キーまたは`ESC`キーで終了
 
 ### 必要ファイル
 
 - `models/wani_detector.onnx`: ワニ検出用AIモデル
+- `motions/motion_wani_00.json`: ホームポジション用モーション
+- `motions/motion_wani_00_02.json`: 中間ポーズ用モーション（**新機能**）
 - `motions/motion_wani_01.json`〜`motions/motion_wani_05.json`: 各ワニ位置用モーションファイル
 - `wani_calibration.json`: キャリブレーション設定（自動生成）
 
@@ -267,7 +296,7 @@ python3 wani_detector.py --camera 0 --calibrate
 - `r/t`: 回転調整
 
 #### 基本操作
-- `q`: 終了
+- `q`または`ESC`: 終了
 - `s`: スクリーンショット保存
 - `?`: ヘルプ表示
 
@@ -291,7 +320,7 @@ python3 wani_player.py --robot.type=so101_follower --robot.id=lerobot_follower -
 
 ### キーボード操作
 
-- `0-5`: 対応するワニモーション（motion_wani_00.json〜motion_wani_05.json）を再生
+- `0-5`: ワニモーション00-05を再生（motion_wani_00.json〜motion_wani_05.json）
 - `h`: ホームポジションに移動
 - `ESC`: 終了
 
@@ -315,15 +344,24 @@ python3 motion_editor.py --robot.type=so101_follower --robot.id=lerobot_follower
 
 ### キーボードコマンド
 
+#### 関節制御
 - **WASD**: 各軸の移動 (W/S: shoulder_pan, A/D: shoulder_lift)
 - **IJKL**: その他の軸 (I/K: elbow_flex, J/L: wrist_flex)
 - **Q/E**: wrist_roll
 - **Z/X**: gripper
-- **M**: 現在位置をポイントとして記録
-- **P**: 記録されたモーションを再生
-- **S**: モーションをファイルに保存
-- **L**: モーションをファイルから読み込み
-- **R**: モーションをリセット（2回押しで確定）
+
+#### モーションコマンド
+- **m**: 現在位置をポイントとして記録
+- **p**: 記録されたモーションを再生
+- **c**: モーションをファイルに保存
+- **o**: モーションをファイルから読み込み
+- **r**: モーションをリセット（2回押しで確定）
+- **h**: ホームポジションに移動
+
+#### その他
+- **t**: PID設定を切り替え（デフォルト ⟷ 最適化）
+- **[/]**: ステップサイズ調整（-1°/+1°）
+- **f**: ヘルプ表示
 - **ESC**: 終了
 
 ## 開発
@@ -375,9 +413,26 @@ ruffの設定は`pyproject.toml`で管理されています：
 ## システム全体フロー
 
 1. **モーション作成**: `motion_editor.py`でワニを叩くモーションを作成・保存
+   - `motion_wani_00.json`: ホームポジション
+   - `motion_wani_00_02.json`: 中間ポーズ（**干渉回避用**）
+   - `motion_wani_01.json`〜`motion_wani_05.json`: ワニ叩きモーション
 2. **キャリブレーション**: `wani_detector.py --calibrate`でカメラとワニエリアを調整
 3. **テスト**: `wani_player.py`で各モーションが正常に動作することを確認
 4. **自動運用**: `wani_panicker.py`でワニ検出・自動叩きシステムを起動
+
+### 動作シーケンス（新機能）
+
+```
+起動時: motion_wani_00.json (ホーム)
+  ↓
+ワニ検出
+  ↓
+motion_wani_00_02.json (中間ポーズ) ← 干渉回避
+  ↓  
+motion_wani_XX.json (ワニ叩き)
+  ↓
+motion_wani_00.json (ホーム復帰)
+```
 
 ## ライセンス
 

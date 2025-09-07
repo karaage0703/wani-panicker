@@ -1,0 +1,20 @@
+{
+  "name": "motion_20250907_113234",
+  "points": [
+    {
+      "name": "Point_1",
+      "positions": {
+        "shoulder_pan.pos": -4.789430222956241,
+        "shoulder_lift.pos": -23.43289861169542,
+        "elbow_flex.pos": 15.523465703971112,
+        "wrist_flex.pos": 21.919584954604417,
+        "wrist_roll.pos": 0.31347962382443484,
+        "gripper.pos": 12.885538039753255
+      },
+      "duration": 1.0,
+      "timestamp": 1757212352.545729
+    }
+  ],
+  "created_at": "2025-09-07 11:32:34",
+  "robot_type": "so101_follower"
+}

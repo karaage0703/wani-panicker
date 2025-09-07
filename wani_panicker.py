@@ -52,43 +52,123 @@ class WaniPanickerConfig:
     # モーションファイルディレクトリ
     motion_dir: str = "./motions"
     # 再生速度の倍率 (1.0が通常速度)
-    speed: float = 0.8
+    speed: float = 1.8
     # デバッグ情報を表示するか
     verbose: bool = False
     # 開始時にホームポジションに移動するか
     go_to_home: bool = True
     # ホーム移動の時間（秒）
-    home_duration: float = 3.0
+    home_duration: float = 0.2
     # モーション終了後にホームポジションに戻るか
     return_to_home: bool = True
     # モーション終了後の待機時間（秒）
-    end_hold_time: float = 1.0
+    end_hold_time: float = 0.2
     # 最適化PID設定を適用するか
     use_optimized_pid: bool = True
     # 同じワニに対する連続検出を無視する時間（秒）
     detection_cooldown: float = 3.0
-    # FPS制限
-    fps_limit: int = 10
+    # FPS制限（wani_detector.pyと同じ30fpsにデフォルト変更）
+    fps_limit: int = 30
+    # ONNX実行プロバイダー（CPU/CUDA/TensorRT対応）
+    provider: str = "cpu"
+    # 表示ウィンドウのサイズ倍率（1.0がカメラ解像度と同じ）
+    display_scale: float = 1.5
 
 
 class WaniDetector:
-    """ワニ検出クラス"""
+    """ワニ検出クラス（CUDA/TensorRT対応）"""
 
-    def __init__(self, model_path: str, conf_threshold: float = 0.5):
+    def __init__(self, model_path: str, conf_threshold: float = 0.5, provider: str = "cpu"):
         self.model_path = Path(model_path)
         self.conf_threshold = conf_threshold
+        self.provider = provider
 
         if not self.model_path.exists():
             raise FileNotFoundError(f"ONNXモデルが見つかりません: {model_path}")
 
+        print(f"📦 ONNXモデル読み込み中... ({model_path})")
+
+        # プロバイダー選択（wani_detector.pyと同じロジック）
+        providers = self._get_providers(provider)
+
+        # セッションオプション設定
+        sess_options = ort.SessionOptions()
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+        # プロバイダー固有のオプション設定
+        provider_options = self._get_provider_options(providers)
+
         # ONNXセッション作成
-        self.session = ort.InferenceSession(str(self.model_path))
+        self.session = ort.InferenceSession(
+            str(self.model_path), sess_options, providers=providers, provider_options=provider_options
+        )
+
+        # 実際に使用されているプロバイダーを表示
+        active_provider = self.session.get_providers()[0]
+        print(f"  🚀 使用プロバイダー: {active_provider}")
+        if active_provider == "TensorrtExecutionProvider":
+            print("  ⚡ TensorRT加速: 最高速度")
+        elif active_provider == "CUDAExecutionProvider":
+            print("  🔥 CUDA加速: 高速")
+        else:
+            print("  🖥️  CPU実行: 標準")
+
         self.input_name = self.session.get_inputs()[0].name
         self.output_names = [output.name for output in self.session.get_outputs()]
 
-        print(f"📦 ONNXモデル読み込み完了: {self.model_path}")
-        print(f"  入力: {self.input_name}")
+        input_shape = self.session.get_inputs()[0].shape
+        print(f"  入力: {self.input_name}, Shape: {input_shape}")
         print(f"  出力: {self.output_names}")
+
+    def _get_providers(self, provider_choice):
+        """プロバイダー選択ロジック"""
+        available = ort.get_available_providers()
+
+        if provider_choice == "tensorrt":
+            if "TensorrtExecutionProvider" not in available:
+                print("⚠️  TensorRT未対応、CUDAにフォールバック")
+                return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            print("  ⏳ TensorRT初回最適化中... (数分かかります)")
+            return ["TensorrtExecutionProvider", "CPUExecutionProvider"]
+        elif provider_choice == "cuda":
+            if "CUDAExecutionProvider" not in available:
+                print("⚠️  CUDA未対応、CPUにフォールバック")
+                return ["CPUExecutionProvider"]
+            print("  ⚡ CUDA起動最適化中...")
+            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        elif provider_choice == "cpu":
+            return ["CPUExecutionProvider"]
+        else:
+            print(f"⚠️  未知のプロバイダー: {provider_choice}, CPUにフォールバック")
+            return ["CPUExecutionProvider"]
+
+    def _get_provider_options(self, providers):
+        """プロバイダー固有のオプション設定"""
+        provider_options = []
+
+        for provider in providers:
+            if provider == "TensorrtExecutionProvider":
+                provider_options.append(
+                    {
+                        "trt_max_workspace_size": "268435456",  # 256MB
+                        "trt_engine_cache_enable": "True",
+                        "trt_engine_cache_path": "./trt_cache",
+                    }
+                )
+            elif provider == "CUDAExecutionProvider":
+                provider_options.append(
+                    {
+                        "device_id": 0,
+                        "arena_extend_strategy": "kNextPowerOfTwo",
+                        "gpu_mem_limit": 2 * 1024 * 1024 * 1024,  # 2GB制限
+                        "cudnn_conv_algo_search": "HEURISTIC",
+                        "do_copy_in_default_stream": True,
+                    }
+                )
+            else:
+                provider_options.append({})  # 空のオプション
+
+        return provider_options
 
     def detect(self, frame):
         """単一フレームでワニ検出を実行"""
@@ -115,6 +195,7 @@ class WaniPanicker:
         self.should_exit = False
         self.motions: Dict[str, object] = {}
         self.home_motion = None  # ホームポジション用モーション
+        self.intermediate_motion = None  # 中間ポーズ用モーション（motion_wani_00_02.json）
         self.is_playing_motion = False
         self.last_detection_time: Dict[str, float] = {}
 
@@ -122,8 +203,8 @@ class WaniPanicker:
         if cfg.verbose:
             logging.getLogger().setLevel(logging.DEBUG)
 
-        # ワニ検出器を初期化
-        self.detector = WaniDetector(cfg.model_path, cfg.conf_threshold)
+        # ワニ検出器を初期化（プロバイダー指定付き）
+        self.detector = WaniDetector(cfg.model_path, cfg.conf_threshold, cfg.provider)
 
         # ロボット接続
         print(f"🤖 ロボットに接続中... (type: {cfg.robot.type})")
@@ -177,7 +258,6 @@ class WaniPanicker:
 
                 self.robot.send_action(point.positions)
                 time.sleep(point.duration / self.cfg.speed)
-                time.sleep(0.1)
 
             print("✅ ホームポジション到達")
 
@@ -187,6 +267,19 @@ class WaniPanicker:
     def _load_all_motions(self):
         """全てのワニモーションファイルを事前に読み込み"""
         print("📚 ワニモーションファイルを読み込み中...")
+
+        # 中間ポーズを先に読み込み
+        intermediate_file = "motion_wani_00_02.json"
+        intermediate_path = Path(self.cfg.motion_dir) / intermediate_file
+        print(f"🔍 中間ポーズチェック中: {intermediate_path}")
+        if intermediate_path.exists():
+            try:
+                self.intermediate_motion = load_motion_from_file(str(intermediate_path))
+                print(f"✅ {intermediate_file}: {self.intermediate_motion.name} (中間ポーズ)")
+            except Exception as e:
+                print(f"❌ {intermediate_file} 読み込みエラー: {e}")
+        else:
+            print(f"⚠️  {intermediate_file} が見つかりません（中間ポーズ用）")
 
         for i in range(0, 6):  # 0-5 (wani_00 to wani_05)
             motion_file = f"motion_wani_{i:02d}.json"
@@ -226,8 +319,35 @@ class WaniPanicker:
         self.last_detection_time[zone_id] = current_time
         return True
 
+    def _move_to_intermediate_pose(self):
+        """中間ポーズに移動（motion_wani_00_02.jsonを使用）"""
+        if not self.intermediate_motion:
+            print("⚠️  motion_wani_00_02.jsonが読み込まれていません - 中間ポーズをスキップ")
+            return
+
+        print("🔄 中間ポーズに移動中...")
+
+        try:
+            if not self.intermediate_motion.points:
+                print("❌ 中間ポーズモーションにポイントがありません")
+                return
+
+            for i, point in enumerate(self.intermediate_motion.points, 1):
+                if self.cfg.verbose:
+                    print(f"📍 中間ポイント {i}/{len(self.intermediate_motion.points)}: {point.name}")
+                    for joint, pos in point.positions.items():
+                        print(f"     {joint}: {pos:.2f}")
+
+                self.robot.send_action(point.positions)
+                time.sleep(point.duration / self.cfg.speed)
+
+            print("✅ 中間ポーズ到達")
+
+        except Exception as e:
+            print(f"❌ 中間ポーズ移動エラー: {e}")
+
     def _play_motion(self, motion, zone_id: str):
-        """モーションを再生（非同期）"""
+        """モーションを再生（非同期） - 中間ポーズを経由"""
 
         def play_motion_thread():
             if not motion.points:
@@ -236,9 +356,13 @@ class WaniPanicker:
 
             self.is_playing_motion = True
             print(f"🎯 {zone_id}のワニを叩きます！")
-            print(f"▶️  モーション再生開始: {motion.name}")
 
             try:
+                # 1. 中間ポーズに移動
+                self._move_to_intermediate_pose()
+
+                # 2. ワニ叩きモーションを実行
+                print(f"▶️  モーション再生開始: {motion.name}")
                 for i, point in enumerate(motion.points, 1):
                     print(f"📍 ポイント {i}/{len(motion.points)}: {point.name}")
 
@@ -248,11 +372,10 @@ class WaniPanicker:
 
                     self.robot.send_action(point.positions)
                     time.sleep(point.duration / self.cfg.speed)
-                    time.sleep(0.1)
 
                 print("✅ ワニ叩き完了！")
 
-                # モーション終了後の処理
+                # 3. モーション終了後の処理
                 if self.cfg.return_to_home:
                     print(f"⏱️  終了位置で{self.cfg.end_hold_time}秒待機...")
                     time.sleep(self.cfg.end_hold_time)
@@ -291,12 +414,16 @@ class WaniPanicker:
 
     def run(self):
         """メイン実行"""
-        # カメラ接続
+        # カメラ接続（wani_detector.pyと同じ安定した設定）
+        print(f"📹 カメラ接続試行中... (ID: {self.cfg.camera_id})")
         cap = cv2.VideoCapture(self.cfg.camera_id)
         if not cap.isOpened():
+            print(f"❌ カメラを開けません: {self.cfg.camera_id}")
+            print("  利用可能なカメラIDを確認してください (通常は0)")
             raise ValueError(f"カメラを開けません: {self.cfg.camera_id}")
 
-        # カメラ設定
+        # カメラ設定（wani_detector.pyと同じ設定に統一）
+        print("📋 カメラ設定中...")
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         cap.set(cv2.CAP_PROP_FPS, self.cfg.fps_limit)
@@ -308,7 +435,7 @@ class WaniPanicker:
         print("\n🚨 ワニパニッカー開始！")
         print("=== 動作モード ===")
         print("ワニを検出すると自動でアームが叩きます")
-        print("'q'キーで終了")
+        print("'q'キーまたはESCキーで終了")
         print("==================")
 
         frame_count = 0
@@ -328,7 +455,13 @@ class WaniPanicker:
 
                 ret, frame = cap.read()
                 if not ret:
-                    print("⚠️ フレームの取得に失敗")
+                    print(f"⚠️ フレームの取得に失敗 (フレーム#{frame_count})")
+                    # 数回連続で失敗した場合は詳細なエラー情報を表示
+                    if frame_count > 0 and frame_count % 10 == 0:
+                        actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        actual_fps = cap.get(cv2.CAP_PROP_FPS)
+                        print(f"  現在のカメラ設定: {actual_width}x{actual_height}, {actual_fps:.1f}fps")
                     continue
 
                 # カメラ変換を適用（クロップ・回転）
@@ -370,12 +503,16 @@ class WaniPanicker:
                             frame_with_detections, text, (10, y_offset + i * 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
                         )
 
-                # 画面表示
+                # 画面表示（設定可能なサイズ倍率で表示）
+                window_width = int(width * self.cfg.display_scale)
+                window_height = int(height * self.cfg.display_scale)
+                cv2.namedWindow("Wani Panicker", cv2.WINDOW_NORMAL)
+                cv2.resizeWindow("Wani Panicker", window_width, window_height)
                 cv2.imshow("Wani Panicker", frame_with_detections)
 
                 # キー入力処理
                 key = cv2.waitKey(1) & 0xFF
-                if key == ord("q"):
+                if key == ord("q") or key == 27:  # 'q'キーまたはESCキー (27)
                     print("\n⏹️ 終了します")
                     self.should_exit = True
                     break

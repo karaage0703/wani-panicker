@@ -1,20 +1,20 @@
 {
-  "name": "motion_20250815_151327",
+  "name": "motion_20250907_112712",
   "points": [
     {
       "name": "Point_1",
       "positions": {
-        "shoulder_pan.pos": 0.3218020917135931,
-        "shoulder_lift.pos": -52.240067624683014,
-        "elbow_flex.pos": -5.049594229035165,
-        "wrist_flex.pos": 91.68853893263343,
-        "wrist_roll.pos": 54.13919413919416,
-        "gripper.pos": 0.13937282229965156
+        "shoulder_pan.pos": -4.3765483071841516,
+        "shoulder_lift.pos": -51.95624737063525,
+        "elbow_flex.pos": 25.09025270758123,
+        "wrist_flex.pos": 61.867704280155635,
+        "wrist_roll.pos": 0.0,
+        "gripper.pos": 14.187799862919809
       },
       "duration": 1.0,
-      "timestamp": 1755238404.46211
+      "timestamp": 1757212030.046948
     }
   ],
-  "created_at": "2025-08-15 15:13:27",
+  "created_at": "2025-09-07 11:27:12",
   "robot_type": "so101_follower"
 }
